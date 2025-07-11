@@ -6,3 +6,7 @@
 config.mak
 lib/musl-gcc.specs
 /obj/
+
+/build
+/.cache
+/compile_commands.json
