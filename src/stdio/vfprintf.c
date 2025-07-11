@@ -150,12 +150,15 @@ static const char xdigits[16] = {
 	"0123456789ABCDEF"
 };
 
+// 转 16 进制, lower 是一个 magic number
+// BIT5 置位 为大写, 清除是小写
 static char *fmt_x(uintmax_t x, char *s, int lower)
 {
 	for (; x; x>>=4) *--s = xdigits[(x&15)]|lower;
 	return s;
 }
 
+// 转 8 进制
 static char *fmt_o(uintmax_t x, char *s)
 {
 	for (; x; x>>=3) *--s = '0' + (x&7);
@@ -427,9 +430,13 @@ static int getint(char **s) {
 	return i;
 }
 
+// % [parameter] [flags] [width] [.precision] [length] specifier
+// ↑         ↑       ↑       ↑        ↑          ↑
+// 开始符   参数位置  标志位  字段宽度   精度       长度修饰符  转换说明符
 static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg, int *nl_type)
 {
 	char *a, *z, *s=(char *)fmt;
+	// l10n 是 localization 的缩写, 因为 l~n 之间有 10 个字母, 所以是 10
 	unsigned l10n=0, fl;
 	int w, p, xp;
 	union arg arg;
@@ -454,13 +461,24 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 		if (!*s) break;
 
 		/* Handle literal text and %% format specifiers */
+		// 处理字面量, 直到 %. 结束时 *s = '%'
 		for (a=s; *s && *s!='%'; s++);
+		// 处理 连续 %% 的格式
 		for (z=s; s[0]=='%' && s[1]=='%'; z++, s+=2);
+		// 检查溢出, 这里 [a, z] 就是 "字面量 + 一串 %"
+		// 之后的 l 就是这一段的长度
 		if (z-a > INT_MAX-cnt) goto overflow;
 		l = z-a;
+		// f != NULL
 		if (f) out(f, a, l);
+		// l = z - a != 0 => 没有连续的 %, 那就要处理格式了!
 		if (l) continue;
 
+		// 位置参数
+		// 多用于 本地化, 比如:
+		//  - printf("%2$s %1$s\n", "Lily", "Chen"); // 英文习惯名姓
+		//  - printf("%1$s %2$s\n", "Lily", "Chen"); // 中文习惯姓名
+		// 注意不能 与普通的格式混用
 		if (isdigit(s[1]) && s[2]=='$') {
 			l10n=1;
 			argpos = s[1]-'0';
@@ -471,10 +489,12 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 		}
 
 		/* Read modifier flags */
+		// 标志位
 		for (fl=0; (unsigned)*s-' '<32 && (FLAGMASK&(1U<<*s-' ')); s++)
 			fl |= 1U<<*s-' ';
 
 		/* Read field width */
+		// 字段宽度
 		if (*s=='*') {
 			if (isdigit(s[1]) && s[2]=='$') {
 				l10n=1;
@@ -489,6 +509,7 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 		} else if ((w=getint(&s))<0) goto overflow;
 
 		/* Read precision */
+		// 精度
 		if (*s=='.' && s[1]=='*') {
 			if (isdigit(s[2]) && s[3]=='$') {
 				if (!f) nl_type[s[2]-'0'] = INT, p = 0;
@@ -509,6 +530,7 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 		}
 
 		/* Format specifier state machine */
+		// 运行状态机, 终态 st
 		st=0;
 		do {
 			if (OOB(*s)) goto inval;
@@ -519,8 +541,10 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 
 		/* Check validity of argument type (nl/normal) */
 		if (st==NOARG) {
+			// %%, 不应该有 argpos
 			if (argpos>=0) goto inval;
 		} else {
+			// 取出参数
 			if (argpos>=0) {
 				if (!f) nl_type[argpos]=st;
 				else arg=nl_arg[argpos];
@@ -536,6 +560,7 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 		z = buf + sizeof(buf);
 		prefix = "-+   0X0x";
 		pl = 0;
+		// 转换说明符, 指定数据类型
 		t = s[-1];
 
 		/* Transform ls,lc -> S,C */
@@ -558,11 +583,16 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 			continue;
 		case 'p':
 			p = MAX(p, 2*sizeof(void*));
+			// 指针也是 16 进制
 			t = 'x';
 			fl |= ALT_FORM;
 		case 'x': case 'X':
 			a = fmt_x(arg.i, z, t&32);
 			if (arg.i && (fl & ALT_FORM)) prefix+=(t>>4), pl=2;
+			// 原来是这么做到的吗... 黑魔法来了... 大家不要学!!!
+			// x 的条件是不会走这条路线的哦, 也就是 if (0) 里面的语句根本不会执行
+			// 而 switch 就可以匹配到 case
+			// 由此达到跳过的效果, 目的是为了执行 if(0) 结束之后的那一段通用的语句!
 			if (0) {
 		case 'o':
 			a = fmt_o(arg.i, z);
@@ -644,12 +674,20 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 		l = w;
 	}
 
+	// 有 f => 第二次调用 => 不用检查了
 	if (f) return cnt;
-	if (!l10n) return 0;
 
+	// 如果没有用到本地化就不用管了, 这里是检查, 简而言之:
+	// %x$ 的格式不允许跳: "%2$d %4$s" 这样是非法的, 因为 3 没有用到
+	if (!l10n) return 0;
+	
+	// 这里尝试 pop 出用过的参数
 	for (i=1; i<=NL_ARGMAX && nl_type[i]; i++)
 		pop_arg(nl_arg+i, nl_type[i], ap);
+	// 接着往后检查：: 没有一段没用到的参数位置
+	// 如果都是空的, 就跳过, 没事发生
 	for (; i<=NL_ARGMAX && !nl_type[i]; i++);
+	// 正常情况下 i > NL_ARGMAX. 这里小于则说明中间不连续!
 	if (i<=NL_ARGMAX) goto inval;
 	return 1;
 

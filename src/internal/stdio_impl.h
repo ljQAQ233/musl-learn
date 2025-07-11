@@ -20,20 +20,23 @@
 
 struct _IO_FILE {
 	unsigned flags;
-	unsigned char *rpos, *rend;
+	unsigned char *rpos;
+	unsigned char *rend;
 	int (*close)(FILE *);
-	unsigned char *wend, *wpos;
+	unsigned char *wend;	// 写缓冲尾部, 为了代码简洁
+	unsigned char *wpos;	// 写缓冲指针, 下次写入的位置
 	unsigned char *mustbezero_1;
-	unsigned char *wbase;
+	unsigned char *wbase;	// 写缓冲基地址
 	size_t (*read)(FILE *, unsigned char *, size_t);
 	size_t (*write)(FILE *, const unsigned char *, size_t);
 	off_t (*seek)(FILE *, off_t, int);
-	unsigned char *buf;
-	size_t buf_size;
+	unsigned char *buf;		// 读写缓冲区
+	size_t buf_size;		// 缓冲区大小
 	FILE *prev, *next;
 	int fd;
 	int pipe_pid;
 	long lockcount;
+	// 宽字符模式?
 	int mode;
 	volatile int lock;
 	int lbf;
