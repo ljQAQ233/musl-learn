@@ -3,6 +3,7 @@
 int __toread(FILE *f)
 {
 	f->mode |= f->mode-1;
+	// 写缓冲区有数据
 	if (f->wpos != f->wbase) f->write(f, 0, 0);
 	f->wpos = f->wbase = f->wend = 0;
 	if (f->flags & F_NORD) {

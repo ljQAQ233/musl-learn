@@ -716,6 +716,7 @@ int vfprintf(FILE *restrict f, const char *restrict fmt, va_list ap)
 	}
 
 	FLOCK(f);
+	// 保存上一次的状态, 之后会利用本次是否 F_ERR 来决定函数返回值
 	olderr = f->flags & F_ERR;
 	f->flags &= ~F_ERR;
 	if (!f->buf_size) {
@@ -724,9 +725,11 @@ int vfprintf(FILE *restrict f, const char *restrict fmt, va_list ap)
 		f->buf_size = sizeof internal_buf;
 		f->wpos = f->wbase = f->wend = 0;
 	}
+	// 准备写入
 	if (!f->wend && __towrite(f)) ret = -1;
 	else ret = printf_core(f, fmt, &ap2, nl_arg, nl_type);
 	if (saved_buf) {
+		// 刷新缓冲区
 		f->write(f, 0, 0);
 		if (!f->wpos) ret = -1;
 		f->buf = saved_buf;
